@@ -1,0 +1,755 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Space Mission 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Orbitron:wght@500;700&display=swap">
+<style>
+/* Layout: one full-height stage with the 3D view, HUD panels pinned to its corners, touch controls at the bottom. Single dark look by choice. */
+:root {
+  --bg: #060914;
+  --panel: rgba(8, 13, 30, .74);
+  --line: #2a3a6a;
+  --ink: #e9eefc;
+  --muted: #93a0c8;
+  --accent: #ffb454;
+  --good: #6ee7a8;
+  --cyan: #7fd6ff;
+  --display: 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+  --body: 'Inter', system-ui, sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body);
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; justify-content: center;
+}
+.stage { position: relative; flex: 1; min-width: 0; min-height: 0; max-width: 1280px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #000; user-select: none; -webkit-user-select: none; }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.panel { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; backdrop-filter: blur(4px); }
+.mission { top: 10px; left: 10px; width: min(270px, 62%); }
+.mission h2 { margin: 0 0 6px; font: 700 11px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.mission ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 5px; font-size: 12.5px; line-height: 1.35; }
+.mission li { display: flex; gap: 8px; color: var(--muted); }
+.mission li::before { content: ''; flex: none; width: 12px; height: 12px; margin-top: 2px; border: 1.5px solid var(--muted); border-radius: 3px; }
+.mission li.active { color: var(--ink); }
+.mission li.active::before { border-color: var(--accent); }
+.mission li.done { color: var(--good); text-decoration: line-through; text-decoration-color: rgba(110, 231, 168, .5); }
+.mission li.done::before { background: var(--good); border-color: var(--good); }
+.hud { top: 10px; right: 10px; text-align: right; font: 700 11px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); display: grid; gap: 5px; min-width: 128px; }
+.hud b { color: var(--ink); font-size: 18px; font-variant-numeric: tabular-nums; }
+.bar { height: 4px; background: #1b2748; border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 35%; background: var(--cyan); }
+.prompt, .toast { position: absolute; left: 50%; transform: translateX(-50%); font: 700 13px var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 9px 16px; border-radius: 6px; text-align: center; max-width: 92%; }
+.prompt { bottom: 112px; background: var(--accent); color: #1a1205; }
+.toast { top: 14%; background: var(--panel); border: 1px solid var(--line); opacity: 0; transition: opacity .3s; pointer-events: none; }
+.toast.on { opacity: 1; }
+.dialog { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(560px, 92%); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
+.dialog b { display: block; font: 700 11px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 3px; }
+.lbl { position: absolute; transform: translate(-50%, -100%); pointer-events: none; text-align: center; font: 700 11px var(--display); letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; white-space: nowrap; display: none; }
+.lbl .d { display: block; font: 400 10px var(--body); color: var(--muted); letter-spacing: .04em; text-transform: none; }
+.lbl.target { border-color: var(--accent); color: var(--accent); }
+.lbl.crystal { border-color: var(--cyan); color: var(--cyan); }
+.fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity .65s; }
+.fade.on { opacity: 1; }
+.overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 20px; background: rgba(6, 9, 20, .78); overflow: auto; }
+.overlay h1 { margin: 0; font: 700 clamp(24px, 6vw, 40px) var(--display); letter-spacing: .12em; text-transform: uppercase; text-wrap: balance; }
+.overlay p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 46ch; }
+.keys { display: grid; grid-template-columns: auto auto; gap: 4px 16px; font-size: 13px; text-align: left; color: var(--muted); }
+.keys b { color: var(--ink); font-weight: 600; }
+button { font: 700 14px var(--display); letter-spacing: .1em; text-transform: uppercase; background: var(--accent); color: #1a1205; border: 0; border-radius: 4px; padding: 12px 26px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+#touch { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
+@media (pointer: coarse) {
+  #touch { display: block; }
+  .prompt { bottom: 215px; }
+  .dialog { bottom: 140px; }
+  .keys { display: none; }
+}
+#joy { position: absolute; left: 16px; bottom: 16px; width: 112px; height: 112px; border-radius: 50%; background: rgba(255, 255, 255, .07); border: 1.5px solid var(--line); touch-action: none; }
+#knob { position: absolute; left: 33px; top: 33px; width: 46px; height: 46px; border-radius: 50%; background: rgba(127, 214, 255, .55); }
+.tb { position: absolute; right: 16px; width: 66px; height: 50px; padding: 0; font-size: 12px; touch-action: none; }
+.tb.sec { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="gl"></canvas>
+  <div id="labels"></div>
+  <div class="panel mission"><h2>Mission</h2><ol id="mlist"></ol></div>
+  <div class="panel hud" id="hudSpace"><span>Speed</span><b id="spd">0</b><div class="bar"><i id="thr"></i></div><span id="camName">Chase cam</span></div>
+  <div class="prompt" id="prompt" hidden></div>
+  <div class="toast" id="toast"></div>
+  <div class="dialog" id="dialog" hidden><b id="dname">Engineer Zara</b><span id="dtext"></span></div>
+  <div id="touch">
+    <div id="joy"><div id="knob"></div></div>
+    <button class="tb" id="bAct" style="bottom:128px" type="button">Act</button>
+    <button class="tb sec" id="bCam" style="bottom:72px" type="button">Cam</button>
+    <button class="tb sec" id="bBoost" style="bottom:16px" type="button">Boost</button>
+  </div>
+  <div class="fade" id="fade"></div>
+  <div class="overlay" id="intro">
+    <h1>Marrikh Mission</h1>
+    <p id="introMsg">Fly your ship to the red planet Marrikh, land, and bring the lost base back to life.</p>
+    <div class="keys">
+      <span><b>W / S</b> faster / slower</span><span><b>A / D</b> turn</span>
+      <span><b>Up / Down</b> nose up / down</span><span><b>Shift</b> boost or run</span>
+      <span><b>E</b> land / take off</span><span><b>C</b> change camera</span>
+      <span><b>On foot</b> WASD to walk</span><span><b>Arrows or drag</b> turn camera</span>
+    </div>
+    <button id="start" type="button" disabled>Building planets...</button>
+  </div>
+  <div class="overlay" id="win" hidden>
+    <h1>Mission complete</h1>
+    <p>The base on Marrikh has power again. Walk around, or return to your ship and press E to take off and explore space.</p>
+    <button id="winBtn" type="button">Keep exploring</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var startBtn = $('start');
+  if (!window.THREE) { $('introMsg').textContent = 'The 3D engine could not load. Check your connection and reload.'; startBtn.hidden = true; return; }
+  var T = THREE, V3 = T.Vector3;
+  var stage = $('stage'), cv = $('gl');
+  var renderer;
+  try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: true }); }
+  catch (err) { $('introMsg').textContent = 'This browser cannot run WebGL, which the game needs.'; startBtn.hidden = true; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+  var camera = new T.PerspectiveCamera(65, 1, 0.5, 22000);
+  var isTouch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  var actName = isTouch ? 'ACT' : 'E';
+
+  function resize() { var w = stage.clientWidth || 800, h = stage.clientHeight || 500; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
+  window.addEventListener('resize', resize); resize();
+
+  /* ---------- helpers ---------- */
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function sstep(a, b, x) { var t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+  function mix3(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
+  function hash3(x, y, z) {
+    var h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1274126177);
+    h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967295;
+  }
+  function vn3(x, y, z) {
+    var xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+    return lerp(
+      lerp(lerp(hash3(xi, yi, zi), hash3(xi + 1, yi, zi), u), lerp(hash3(xi, yi + 1, zi), hash3(xi + 1, yi + 1, zi), u), v),
+      lerp(lerp(hash3(xi, yi, zi + 1), hash3(xi + 1, yi, zi + 1), u), lerp(hash3(xi, yi + 1, zi + 1), hash3(xi + 1, yi + 1, zi + 1), u), v), w);
+  }
+  function fbm3(x, y, z, o) { var a = 0, amp = .5, f = 1; for (var i = 0; i < o; i++) { a += amp * vn3(x * f, y * f, z * f); f *= 2; amp *= .5; } return a; }
+  function vn2p(x, y, P) {
+    var xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    var x0 = ((xi % P) + P) % P, x1 = (x0 + 1) % P, y0 = ((yi % P) + P) % P, y1 = (y0 + 1) % P;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    return lerp(lerp(hash3(x0, y0, 7), hash3(x1, y0, 7), u), lerp(hash3(x0, y1, 7), hash3(x1, y1, 7), u), v);
+  }
+  function fbm2p(x, y, P, o) { var a = 0, amp = .5, f = 1; for (var i = 0; i < o; i++) { a += amp * vn2p(x * f, y * f, P * f); f *= 2; amp *= .5; } return a; }
+
+  /* ---------- procedural textures ---------- */
+  function sphereTexture(w, h, fn, alpha) {
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var g = c.getContext('2d'), img = g.createImageData(w, h), d = img.data, i = 0;
+    for (var y = 0; y < h; y++) {
+      var phi = (y + .5) / h * Math.PI, cy = Math.cos(phi), sy = Math.sin(phi);
+      for (var x = 0; x < w; x++) {
+        var th = (x + .5) / w * 2 * Math.PI, col = fn(sy * Math.cos(th), cy, sy * Math.sin(th));
+        d[i++] = col[0]; d[i++] = col[1]; d[i++] = col[2]; d[i++] = alpha ? col[3] : 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    var t = new T.CanvasTexture(c); t.anisotropy = 4; return t;
+  }
+  function nilaColor(px, py, pz) {
+    var h = fbm3(px * 2.4 + 3, py * 2.4, pz * 2.4, 6), lat = Math.abs(py), c;
+    if (h < .5) c = mix3([8, 34, 100], [34, 120, 178], sstep(.28, .5, h));
+    else if (h < .525) c = [214, 198, 140];
+    else { var t = sstep(.525, .72, h); c = t < .55 ? mix3([46, 120, 52], [88, 112, 58], t / .55) : mix3([88, 112, 58], [132, 108, 82], (t - .55) / .45); }
+    var ice = sstep(.84, .93, lat + (fbm3(px * 5, py * 5, pz * 5, 3) - .5) * .12);
+    return mix3(c, [238, 244, 250], ice);
+  }
+  function cloudColor(px, py, pz) { var n = fbm3(px * 3.2 + 20, py * 3.2, pz * 3.2, 5); return [255, 255, 255, clamp((n - .5) * 4.2, 0, 1) * 235]; }
+  function marrikhColor(px, py, pz) {
+    var h = fbm3(px * 3 + 9, py * 3, pz * 3, 6), m = fbm3(px * 7, py * 7 + 4, pz * 7, 4);
+    var c = mix3([116, 42, 24], [214, 126, 74], sstep(.3, .7, h)), k = .72 + .5 * m;
+    c = [c[0] * k, c[1] * k, c[2] * k];
+    return mix3(c, [236, 214, 204], sstep(.88, .96, Math.abs(py)));
+  }
+  function zuhalColor(px, py, pz) {
+    var b = py * 9 + fbm3(px * 2.5, py * 2.5, pz * 2.5, 4) * 2.6, v = .5 + .5 * Math.sin(b * 2.2) * Math.cos(b * .6 + 1);
+    var c = v < .5 ? mix3([138, 92, 58], [200, 150, 96], v * 2) : mix3([200, 150, 96], [236, 214, 170], (v - .5) * 2);
+    var n = .92 + .16 * fbm3(px * 14, py * 40, pz * 14, 3);
+    return [c[0] * n, c[1] * n, c[2] * n];
+  }
+  function glowTexture(inner, outer) {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, inner); gr.addColorStop(.25, outer); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new T.CanvasTexture(c);
+  }
+  function ringTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 512; var g = c.getContext('2d');
+    for (var i = 0; i < 260; i++) {
+      var f = i / 260, r = (0.614 + 0.386 * f) * 256, a = (.28 + .6 * hash3(i, 3, 5)) * (.6 + .4 * Math.sin(i * .35));
+      if (f > .55 && f < .63) a *= .05;
+      g.strokeStyle = 'rgba(' + Math.round(200 + 30 * hash3(i, 1, 1)) + ',' + Math.round(176 + 24 * hash3(i, 2, 2)) + ',140,' + clamp(a, 0, 1) + ')';
+      g.lineWidth = 1.9; g.beginPath(); g.arc(256, 256, r, 0, 6.2832); g.stroke();
+    }
+    return new T.CanvasTexture(c);
+  }
+  function groundTexture() {
+    var N = 512, c = document.createElement('canvas'); c.width = c.height = N;
+    var g = c.getContext('2d'), img = g.createImageData(N, N), d = img.data, i = 0;
+    for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+      var n = fbm2p(x / N * 6, y / N * 6, 6, 5), col = mix3([138, 72, 46], [196, 120, 78], sstep(.25, .75, n));
+      if (hash3(x, y, 31) > .996) col = [112, 62, 42];
+      d[i++] = col[0]; d[i++] = col[1]; d[i++] = col[2]; d[i++] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    var t = new T.CanvasTexture(c); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(40, 40); t.anisotropy = 8; return t;
+  }
+  function labelSprite(text, bg, fg) {
+    var c = document.createElement('canvas'); c.width = c.height = 128; var g = c.getContext('2d');
+    g.fillStyle = bg; g.beginPath(); g.arc(64, 64, 52, 0, 6.2832); g.fill();
+    g.fillStyle = fg; g.font = '700 84px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 64, 70);
+    return new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), fog: false, depthTest: false }));
+  }
+  function atmosphere(radius, color, power) {
+    return new T.Mesh(new T.SphereGeometry(radius * 1.12, 48, 32), new T.ShaderMaterial({
+      uniforms: { c: { value: new T.Color(color) }, p: { value: power || 3 } },
+      vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vN=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }',
+      fragmentShader: 'uniform vec3 c; uniform float p; varying vec3 vN; varying vec3 vV; void main(){ float f=pow(1.0-abs(dot(vN,vV)),p); gl_FragColor=vec4(c,f*.9); }',
+      transparent: true, blending: T.AdditiveBlending, depthWrite: false
+    }));
+  }
+  function starField(n, radius, size) {
+    var pos = new Float32Array(n * 3), col = new Float32Array(n * 3), v = new V3();
+    for (var i = 0; i < n; i++) {
+      v.set(Math.random() - .5, Math.random() - .5, Math.random() - .5).normalize().multiplyScalar(radius);
+      pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+      var b = .45 + .55 * Math.random(), t = Math.random();
+      col[i * 3] = b * (t < .2 ? 1 : .85); col[i * 3 + 1] = b * .9; col[i * 3 + 2] = b * (t > .6 ? 1 : .8);
+    }
+    var geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('color', new T.BufferAttribute(col, 3));
+    var p = new T.Points(geo, new T.PointsMaterial({ size: size, sizeAttenuation: false, vertexColors: true, transparent: true, depthWrite: false, fog: false }));
+    p.frustumCulled = false; return p;
+  }
+  function makeDust(n, range, size, color, opacity) {
+    var pos = new Float32Array(n * 3);
+    for (var i = 0; i < n * 3; i++) pos[i] = (Math.random() - .5) * range * 2;
+    var geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+    var pts = new T.Points(geo, new T.PointsMaterial({ color: color, size: size, sizeAttenuation: false, transparent: true, opacity: opacity, depthWrite: false, fog: false }));
+    pts.frustumCulled = false;
+    return { pts: pts, update: function (c, dx, dy, dz) {
+      var r = range;
+      for (var i = 0; i < n; i++) {
+        var k = i * 3; pos[k] += dx; pos[k + 1] += dy; pos[k + 2] += dz;
+        var d = pos[k] - c.x; if (d > r) pos[k] -= 2 * r; else if (d < -r) pos[k] += 2 * r;
+        d = pos[k + 1] - c.y; if (d > r) pos[k + 1] -= 2 * r; else if (d < -r) pos[k + 1] += 2 * r;
+        d = pos[k + 2] - c.z; if (d > r) pos[k + 2] -= 2 * r; else if (d < -r) pos[k + 2] += 2 * r;
+      }
+      geo.attributes.position.needsUpdate = true;
+    } };
+  }
+
+  /* ---------- models ---------- */
+  var glowBlue = null;
+  function buildShip() {
+    var g = new T.Group(), model = new T.Group(); g.add(model);
+    var hull = new T.MeshStandardMaterial({ color: 0xdde5f4, metalness: .5, roughness: .35 });
+    var acc = new T.MeshStandardMaterial({ color: 0xff7a45, metalness: .3, roughness: .5 });
+    var dark = new T.MeshStandardMaterial({ color: 0x1a2236, metalness: .6, roughness: .4 });
+    var glass = new T.MeshStandardMaterial({ color: 0x8fdcff, metalness: .9, roughness: .08, emissive: 0x103a5a, transparent: true, opacity: .88 });
+    var body = new T.Mesh(new T.CylinderGeometry(1, .35, 5.5, 20), hull); body.rotation.x = Math.PI / 2; model.add(body);
+    var tip = new T.Mesh(new T.ConeGeometry(.35, 1.3, 16), acc); tip.rotation.x = -Math.PI / 2; tip.position.z = -3.4; model.add(tip);
+    var cock = new T.Mesh(new T.SphereGeometry(.65, 18, 12), glass); cock.scale.set(1, .7, 1.7); cock.position.set(0, .6, -.5); model.add(cock);
+    var stripe = new T.Mesh(new T.BoxGeometry(.3, .06, 2.6), acc); stripe.position.set(0, .94, 1.1); model.add(stripe);
+    var ws = new T.Shape(); ws.moveTo(0, -1.4); ws.lineTo(4.2, 1.6); ws.lineTo(4.2, 2.5); ws.lineTo(0, 2.3); ws.closePath();
+    var wg = new T.ExtrudeGeometry(ws, { depth: .14, bevelEnabled: false });
+    var w1 = new T.Mesh(wg, hull); w1.rotation.x = Math.PI / 2; w1.position.set(.5, -.1, 0); model.add(w1);
+    var w2 = new T.Mesh(wg, hull); w2.rotation.x = Math.PI / 2; w2.scale.x = -1; w2.position.set(-.5, -.1, 0); model.add(w2);
+    var fin = new T.Mesh(new T.BoxGeometry(.14, 1.5, 1.6), acc); fin.position.set(0, 1.0, 2.1); model.add(fin);
+    var flames = [], glows = [];
+    [-.65, .65].forEach(function (sx) {
+      var en = new T.Mesh(new T.CylinderGeometry(.38, .5, 1.3, 16), dark); en.rotation.x = Math.PI / 2; en.position.set(sx, -.05, 2.9); model.add(en);
+      var fg = new T.ConeGeometry(.34, 2.4, 14, 1, true); fg.translate(0, 1.2, 0);
+      var fl = new T.Mesh(fg, new T.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+      fl.rotation.x = Math.PI / 2; fl.position.set(sx, -.05, 3.55); model.add(fl); flames.push(fl);
+      var gs = new T.Sprite(new T.SpriteMaterial({ map: glowBlue, color: 0x8fd8ff, blending: T.AdditiveBlending, depthWrite: false, transparent: true }));
+      gs.position.set(sx, -.05, 3.7); gs.scale.set(2.4, 2.4, 1); model.add(gs); glows.push(gs);
+    });
+    return { group: g, model: model, flames: flames, glows: glows };
+  }
+  function buildAstronaut(suitCol, accCol) {
+    var g = new T.Group(), root = new T.Group(); g.add(root);
+    var suit = new T.MeshStandardMaterial({ color: suitCol, roughness: .7 });
+    var acc = new T.MeshStandardMaterial({ color: accCol, roughness: .6 });
+    var visor = new T.MeshStandardMaterial({ color: 0x0f1a30, metalness: .9, roughness: .12, emissive: 0x0a1a38 });
+    function add(m, x, y, z, parent) { m.position.set(x, y, z); m.castShadow = true; (parent || root).add(m); return m; }
+    add(new T.Mesh(new T.BoxGeometry(.7, .8, .4), suit), 0, 1.15, 0);
+    add(new T.Mesh(new T.SphereGeometry(.34, 20, 16), suit), 0, 1.82, 0);
+    var v = add(new T.Mesh(new T.SphereGeometry(.27, 16, 12), visor), 0, 1.83, .12); v.scale.set(1, .78, .75);
+    add(new T.Mesh(new T.BoxGeometry(.5, .6, .25), acc), 0, 1.2, -.3);
+    add(new T.Mesh(new T.BoxGeometry(.52, .12, .42), acc), 0, .78, 0);
+    function limb(x, y, w, h, d, mat) {
+      var p = new T.Group(); p.position.set(x, y, 0); root.add(p);
+      add(new T.Mesh(new T.BoxGeometry(w, h, d), mat), 0, -h / 2, 0, p); return p;
+    }
+    var legL = limb(-.18, .76, .26, .7, .3, suit), legR = limb(.18, .76, .26, .7, .3, suit);
+    add(new T.Mesh(new T.BoxGeometry(.28, .15, .4), acc), 0, -.72, .04, legL); add(new T.Mesh(new T.BoxGeometry(.28, .15, .4), acc), 0, -.72, .04, legR);
+    var armL = limb(-.46, 1.5, .2, .62, .22, suit), armR = limb(.46, 1.5, .2, .62, .22, suit);
+    return { group: g, legL: legL, legR: legR, armL: armL, armR: armR };
+  }
+
+  /* ---------- state ---------- */
+  var mode = 'intro', prevMode = 'space', activeScene, keys = {}, joy = { x: 0, y: 0 }, btn = { boost: false };
+  var M = { reach: false, landed: false, crystals: 0, delivered: false, distTxt: '' };
+  var S = { speed: 0, thr: .35, yaw: 0, pitch: 0 }, camMode = 0, fpv = false;
+  var tmp = new V3(), fwd = new V3(), up = new V3();
+  var planets = [], spaceLabels = [], surfLabels = [], ship, spaceScene, surfScene, spaceDust, surfDust, starsSpace, skyGroup, MARR, built = false;
+  var P = { pos: new V3(3, 0, 19), face: Math.PI, phase: 0, amt: 0 }, camYaw = 0, camPitch = .35, surf = {};
+  var toastT, lastPrompt = null, lastCollide = 0;
+
+  function toast(t) { var el = $('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(function () { el.classList.remove('on'); }, 3000); }
+  function setPrompt(t) { if (t === lastPrompt) return; lastPrompt = t; var el = $('prompt'); if (t) { el.textContent = t; el.hidden = false; } else el.hidden = true; }
+  var AC = null;
+  function beep(f, d, type, v, delay) {
+    try {
+      if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+      var t0 = AC.currentTime + (delay || 0), o = AC.createOscillator(), g = AC.createGain();
+      o.type = type || 'sine'; o.frequency.value = f; g.gain.setValueAtTime(v || .06, t0); g.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+      o.connect(g); g.connect(AC.destination); o.start(t0); o.stop(t0 + d);
+    } catch (e) {}
+  }
+  function makeLabel(cls, list) {
+    var d = document.createElement('div'); d.className = 'lbl ' + (cls || ''); d.innerHTML = '<span class="n"></span><span class="d"></span>';
+    $('labels').appendChild(d); d._n = d.firstChild; d._d = d.lastChild; list.push(d); return d;
+  }
+  function placeLabel(el, wp, name, dist) {
+    tmp.copy(wp).project(camera);
+    if (tmp.z > 1 || Math.abs(tmp.x) > 1.05 || Math.abs(tmp.y) > 1.05) { el.style.display = 'none'; return; }
+    el.style.display = 'block'; el.style.left = ((tmp.x + 1) / 2 * 100) + '%'; el.style.top = ((1 - tmp.y) / 2 * 100) + '%';
+    el._n.textContent = name; el._d.textContent = dist;
+  }
+  function hideLabels(list) { list.forEach(function (l) { l.style.display = 'none'; }); }
+
+  function renderMission() {
+    var items = [
+      [M.reach, 'Fly to Marrikh, the red planet' + (!M.reach && M.distTxt ? ' (' + M.distTxt + ')' : '')],
+      [M.landed, 'Land on Marrikh (' + actName + ' when close)'],
+      [M.crystals >= 3, 'Collect blue power crystals ' + M.crystals + '/3'],
+      [M.delivered, 'Walk into the glowing ring to power the base']
+    ], first = -1, html = '';
+    items.forEach(function (it, i) { if (first < 0 && !it[0]) first = i; });
+    items.forEach(function (it, i) { html += '<li class="' + (it[0] ? 'done' : i === first ? 'active' : '') + '">' + it[1] + '</li>'; });
+    $('mlist').innerHTML = html;
+  }
+
+  /* ---------- build the world (after the page is up) ---------- */
+  function build() {
+    glowBlue = glowTexture('rgba(255,255,255,1)', 'rgba(120,200,255,.55)');
+    var sunDir = new V3(.3, .45, .5).normalize();
+
+    /* space scene */
+    spaceScene = new T.Scene(); spaceScene.background = new T.Color(0x02030a);
+    spaceScene.add(new T.AmbientLight(0x35466f, .6));
+    var sun = new T.DirectionalLight(0xfff2de, 1.55); sun.position.copy(sunDir).multiplyScalar(1000); spaceScene.add(sun);
+    starsSpace = starField(3200, 9000, 2.1); spaceScene.add(starsSpace);
+    var sunSpr = new T.Sprite(new T.SpriteMaterial({ map: glowTexture('rgba(255,255,255,1)', 'rgba(255,214,150,.6)'), blending: T.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+    sunSpr.position.copy(sunDir).multiplyScalar(8000); sunSpr.scale.set(2600, 2600, 1); spaceScene.add(sunSpr);
+
+    var nilaTex = sphereTexture(512, 256, nilaColor);
+    var defs = [
+      { name: 'Nila', r: 130, p: new V3(-330, -40, -420), tex: nilaTex, atm: 0x5aa8ff },
+      { name: 'Marrikh', r: 75, p: new V3(900, 80, -1500), tex: sphereTexture(512, 256, marrikhColor), atm: 0xff9a66, target: true },
+      { name: 'Zuhal', r: 280, p: new V3(-1500, 260, -2800), tex: sphereTexture(512, 256, zuhalColor), atm: 0xf0d8a8, ring: true }
+    ];
+    defs.forEach(function (d) {
+      var m = new T.Mesh(new T.SphereGeometry(d.r, 64, 48), new T.MeshStandardMaterial({ map: d.tex, roughness: 1, metalness: 0 }));
+      m.position.copy(d.p); spaceScene.add(m); d.mesh = m;
+      var a = atmosphere(d.r, d.atm, 3); a.position.copy(d.p); spaceScene.add(a);
+      if (d.name === 'Nila') {
+        var cl = new T.Mesh(new T.SphereGeometry(d.r * 1.014, 64, 48), new T.MeshStandardMaterial({ map: sphereTexture(512, 256, cloudColor, true), transparent: true, depthWrite: false, roughness: 1 }));
+        cl.position.copy(d.p); spaceScene.add(cl); d.clouds = cl;
+      }
+      if (d.ring) {
+        var rg = new T.Mesh(new T.RingGeometry(d.r * 1.35, d.r * 2.2, 128), new T.MeshBasicMaterial({ map: ringTexture(), side: T.DoubleSide, transparent: true, depthWrite: false }));
+        rg.position.copy(d.p); rg.rotation.x = -Math.PI / 2 + .32; rg.rotation.y = .15; spaceScene.add(rg);
+      }
+      d.label = makeLabel(d.target ? 'target' : '', spaceLabels);
+      planets.push(d); if (d.target) MARR = d;
+    });
+
+    var ast = new T.InstancedMesh(new T.DodecahedronGeometry(1, 0), new T.MeshStandardMaterial({ color: 0x7a7068, roughness: 1, flatShading: true }), 280), dm = new T.Object3D();
+    var a0 = new V3(0, 0, 0);
+    for (var i = 0; i < 280; i++) {
+      var t = .07 + Math.random() * .85;
+      dm.position.copy(a0).lerp(MARR.p, t).add(new V3(Math.random() - .5, (Math.random() - .5) * .6, Math.random() - .5).multiplyScalar(700));
+      dm.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      var s = 2 + Math.random() * Math.random() * 18; dm.scale.set(s, s * (.6 + Math.random() * .6), s * (.7 + Math.random() * .6)); dm.updateMatrix(); ast.setMatrixAt(i, dm.matrix);
+    }
+    spaceScene.add(ast);
+
+    ship = buildShip(); spaceScene.add(ship.group);
+    spaceDust = makeDust(500, 130, 1.6, 0xbfd4ff, .6); spaceScene.add(spaceDust.pts);
+
+    /* surface scene */
+    surfScene = new T.Scene(); surfScene.fog = new T.FogExp2(0xd08a62, .0042);
+    surfScene.add(new T.HemisphereLight(0xffd8b8, 0x6a3a2a, .62));
+    var sDir = new V3(.45, .5, -.55).normalize();
+    var sl = new T.DirectionalLight(0xfff0dd, 1.5); sl.castShadow = true; sl.shadow.mapSize.set(2048, 2048);
+    var sc = sl.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 320; sl.shadow.bias = -.0006;
+    surfScene.add(sl); surfScene.add(sl.target); surf.sun = sl; surf.sunDir = sDir;
+
+    skyGroup = new T.Group(); surfScene.add(skyGroup);
+    skyGroup.add(new T.Mesh(new T.SphereGeometry(1500, 32, 16), new T.ShaderMaterial({
+      side: T.BackSide, depthWrite: false,
+      uniforms: { top: { value: new T.Color(0x3c2c52) }, hor: { value: new T.Color(0xd08a62) } },
+      vertexShader: 'varying vec3 vP; void main(){ vP=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 hor; varying vec3 vP; void main(){ float h=clamp(vP.y,0.,1.); gl_FragColor=vec4(mix(hor,top,pow(h,.55)),1.); }'
+    })));
+    var sky2 = starField(700, 1400, 1.6); sky2.material.opacity = .55; skyGroup.add(sky2);
+    var homeP = new T.Mesh(new T.SphereGeometry(70, 48, 32), new T.MeshBasicMaterial({ map: nilaTex, color: 0xd8d8d8, fog: false }));
+    homeP.position.set(-520, 330, -900); skyGroup.add(homeP);
+    var ha = atmosphere(70, 0x5aa8ff, 3); ha.position.copy(homeP.position); skyGroup.add(ha);
+    var sun2 = new T.Sprite(new T.SpriteMaterial({ map: glowTexture('rgba(255,255,255,1)', 'rgba(255,220,170,.55)'), blending: T.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+    sun2.position.copy(sDir).multiplyScalar(1300); sun2.scale.set(520, 520, 1); skyGroup.add(sun2);
+
+    function heightAt(x, z) { var d = Math.sqrt(x * x + z * z), k = sstep(40, 110, d); return k * (Math.sin(x * .021) * Math.cos(z * .017) * 5 + Math.sin(x * .055 + z * .043) * 1.4 + Math.sin(z * .011 + 1.7) * 4); }
+    surf.h = heightAt;
+    var gg = new T.PlaneGeometry(900, 900, 120, 120); gg.rotateX(-Math.PI / 2);
+    var gp = gg.attributes.position, gc = new Float32Array(gp.count * 3);
+    for (var v = 0; v < gp.count; v++) {
+      var gx = gp.getX(v), gz = gp.getZ(v); gp.setY(v, heightAt(gx, gz));
+      var cc = .78 + .45 * fbm3(gx * .012, 0, gz * .012, 3); gc[v * 3] = cc; gc[v * 3 + 1] = cc * .96; gc[v * 3 + 2] = cc * .94;
+    }
+    gg.setAttribute('color', new T.BufferAttribute(gc, 3)); gg.computeVertexNormals();
+    var gt = groundTexture();
+    var ground = new T.Mesh(gg, new T.MeshStandardMaterial({ map: gt, bumpMap: gt, bumpScale: 2.2, vertexColors: true, roughness: 1 }));
+    ground.receiveShadow = true; surfScene.add(ground);
+
+    for (i = 0; i < 80; i++) {
+      var ang = Math.random() * 6.28, dist = 16 + Math.random() * 220, rx = Math.cos(ang) * dist, rz = Math.sin(ang) * dist;
+      if (Math.abs(rx) < 14 && rz > 10 && rz < 34) continue;
+      var rk = new T.Mesh(new T.DodecahedronGeometry(1, 0), new T.MeshStandardMaterial({ color: new T.Color().setHSL(.04, .35, .22 + Math.random() * .14), roughness: 1, flatShading: true }));
+      var rs = .8 + Math.random() * Math.random() * 4.5; rk.scale.set(rs * (1 + Math.random() * .6), rs * (.5 + Math.random() * .5), rs * (1 + Math.random() * .6));
+      rk.position.set(rx, heightAt(rx, rz) + rs * .15, rz); rk.rotation.set(Math.random(), Math.random() * 6, Math.random()); rk.castShadow = true; rk.receiveShadow = true; surfScene.add(rk);
+    }
+
+    /* crystals */
+    surf.crystals = [];
+    [[52, 12], [-60, -40], [15, -95]].forEach(function (p) {
+      var g = new T.Group(), y = heightAt(p[0], p[1]);
+      var cm = new T.MeshStandardMaterial({ color: 0x4de2ff, emissive: 0x1296c0, emissiveIntensity: 1.2, roughness: .2, metalness: .2 });
+      var main = new T.Mesh(new T.OctahedronGeometry(.6, 0), cm); main.scale.set(.75, 2, .75); main.position.y = 1.5; main.castShadow = true; g.add(main);
+      [[.8, .3, .5], [-.7, .4, -.4]].forEach(function (o) { var s = new T.Mesh(new T.OctahedronGeometry(.35, 0), cm); s.scale.set(.7, 1.6, .7); s.position.set(o[0], .6, o[2]); s.rotation.z = o[0] * .3; g.add(s); });
+      var beam = new T.Mesh(new T.CylinderGeometry(.22, .22, 46, 8, 1, true), new T.MeshBasicMaterial({ color: 0x66ddff, transparent: true, opacity: .22, blending: T.AdditiveBlending, depthWrite: false, fog: false }));
+      beam.position.y = 23; g.add(beam);
+      var pl = new T.PointLight(0x4de2ff, 1.1, 16); pl.position.y = 2; g.add(pl);
+      g.position.set(p[0], y, p[1]); surfScene.add(g);
+      surf.crystals.push({ g: g, main: main, got: false, x: p[0], z: p[1], label: makeLabel('crystal', surfLabels) });
+    });
+
+    /* base */
+    var baseG = new T.Group(); baseG.position.set(0, 0, -30); surfScene.add(baseG);
+    var white = new T.MeshStandardMaterial({ color: 0xe9e4de, roughness: .6, metalness: .2 });
+    var greyM = new T.MeshStandardMaterial({ color: 0x4a4f5c, roughness: .8 });
+    surf.win = new T.MeshStandardMaterial({ color: 0x22303f, emissive: 0x000000, roughness: .3 });
+    function bAdd(mesh, x, y, z) { mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; baseG.add(mesh); return mesh; }
+    bAdd(new T.Mesh(new T.CylinderGeometry(7.6, 7.8, .5, 40), greyM), 0, .25, 0);
+    bAdd(new T.Mesh(new T.SphereGeometry(7, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), white), 0, .5, 0);
+    bAdd(new T.Mesh(new T.CylinderGeometry(6.62, 6.62, .9, 40, 1, true), surf.win), 0, 3.1, 0);
+    bAdd(new T.Mesh(new T.CylinderGeometry(2.6, 2.6, 5, 24), white), 11.5, 2.6, 0).rotation.z = Math.PI / 2;
+    bAdd(new T.Mesh(new T.CylinderGeometry(1.1, 1.1, 5, 16), greyM), 7.6, 1.6, 0).rotation.z = Math.PI / 2;
+    bAdd(new T.Mesh(new T.CylinderGeometry(2.2, 2.2, 4.4, 24), white), -11, 2.4, 3).rotation.z = Math.PI / 2;
+    bAdd(new T.Mesh(new T.CylinderGeometry(1, 1, 4.2, 16), greyM), -7.4, 1.6, 2).rotation.z = Math.PI / 2;
+    bAdd(new T.Mesh(new T.CylinderGeometry(2.64, 2.64, .8, 24, 1, true), surf.win), 11.5, 3.1, 0).rotation.z = Math.PI / 2;
+    bAdd(new T.Mesh(new T.CylinderGeometry(.12, .2, 10, 8), greyM), 0, 12, 0);
+    surf.beacon = bAdd(new T.Mesh(new T.SphereGeometry(.35, 12, 8), new T.MeshBasicMaterial({ color: 0xff3a3a })), 0, 17.2, 0);
+    var panelM = new T.MeshStandardMaterial({ color: 0x1b2f66, metalness: .7, roughness: .3, emissive: 0x050c22 });
+    [[-6, -11], [6, -11]].forEach(function (p) {
+      var pn = bAdd(new T.Mesh(new T.BoxGeometry(6, .18, 3.6), panelM), p[0], 2.3, p[1]); pn.rotation.x = -.45;
+      bAdd(new T.Mesh(new T.CylinderGeometry(.14, .14, 2.2, 8), greyM), p[0], 1.1, p[1] + 1);
+    });
+    surf.baseLight = new T.PointLight(0x9fdcff, 0, 60); surf.baseLight.position.set(0, 6, 8); baseG.add(surf.baseLight);
+    surf.dome = baseG.children[1];
+
+    surf.ringG = new T.Group(); surf.ringG.position.set(0, .15, -12); surfScene.add(surf.ringG);
+    surf.ringM = new T.MeshBasicMaterial({ color: 0xffb454 });
+    var tor = new T.Mesh(new T.TorusGeometry(3.2, .14, 8, 48), surf.ringM); tor.rotation.x = Math.PI / 2; surf.ringG.add(tor);
+    var disc = new T.Mesh(new T.CircleGeometry(3.1, 40), new T.MeshBasicMaterial({ color: 0xffb454, transparent: true, opacity: .2, side: T.DoubleSide })); disc.rotation.x = -Math.PI / 2; surf.ringG.add(disc);
+    surf.ringLabel = makeLabel('target', surfLabels);
+
+    /* landed ship */
+    var ls = buildShip(); ls.flames.forEach(function (f) { f.visible = false; }); ls.glows.forEach(function (f) { f.visible = false; });
+    ls.group.scale.setScalar(1.25); ls.group.position.set(0, 2.1, 24); surfScene.add(ls.group);
+    ls.group.traverse(function (o) { if (o.isMesh) o.castShadow = true; });
+    var legM = new T.MeshStandardMaterial({ color: 0x3b4252, metalness: .6, roughness: .5 });
+    [[-1.2, 1], [1.2, 1], [-.9, -1.6], [.9, -1.6]].forEach(function (p) {
+      var lg = new T.Mesh(new T.CylinderGeometry(.08, .12, 1.8, 8), legM); lg.position.set(p[0], -.9, p[1]); lg.rotation.z = p[0] * .12; lg.castShadow = true; ls.group.add(lg);
+    });
+    surf.ship = ls.group; surf.shipLabel = makeLabel('', surfLabels);
+
+    /* characters */
+    P.char = buildAstronaut(0xf1f3f8, 0x3a86ff); surfScene.add(P.char.group);
+    surf.npc = buildAstronaut(0xff9d3c, 0x2b3345); surf.npc.group.position.set(5, 0, -14); surfScene.add(surf.npc.group);
+    surf.mark = labelSprite('!', '#ffb454', '#1a1205'); surf.mark.scale.set(1.1, 1.1, 1); surf.mark.position.set(5, 3.4, -14); surfScene.add(surf.mark);
+    surfDust = makeDust(260, 45, 1.8, 0xe6b890, .45); surfScene.add(surfDust.pts);
+
+    renderMission();
+    built = true; activeScene = spaceScene;
+    ship.group.position.set(0, 0, 0);
+    startBtn.disabled = false; startBtn.textContent = 'Start mission';
+  }
+
+  /* ---------- input ---------- */
+  var GAME_KEYS = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+  addEventListener('keydown', function (e) {
+    if (mode === 'intro') return;
+    keys[e.code] = true;
+    if (GAME_KEYS.indexOf(e.code) > -1) e.preventDefault();
+    if (e.code === 'KeyE' && !e.repeat) doAction();
+    if (e.code === 'KeyC' && !e.repeat) cycleCam();
+  });
+  addEventListener('keyup', function (e) { keys[e.code] = false; });
+  function down(c) { return !!keys[c]; }
+  (function () {
+    var base = $('joy'), knob = $('knob'), id = null, R = 46;
+    function set(e) {
+      var r = base.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), m = Math.hypot(dx, dy);
+      if (m > R) { dx *= R / m; dy *= R / m; }
+      knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; joy.x = dx / R; joy.y = -dy / R;
+    }
+    base.addEventListener('pointerdown', function (e) { id = e.pointerId; base.setPointerCapture(id); set(e); e.preventDefault(); });
+    base.addEventListener('pointermove', function (e) { if (e.pointerId === id) set(e); });
+    function end(e) { if (e.pointerId === id) { id = null; joy.x = joy.y = 0; knob.style.transform = 'translate(0,0)'; } }
+    base.addEventListener('pointerup', end); base.addEventListener('pointercancel', end);
+  })();
+  $('bAct').addEventListener('pointerdown', function (e) { e.preventDefault(); doAction(); });
+  $('bCam').addEventListener('pointerdown', function (e) { e.preventDefault(); cycleCam(); });
+  var bb = $('bBoost');
+  bb.addEventListener('pointerdown', function (e) { e.preventDefault(); btn.boost = true; });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { bb.addEventListener(n, function () { btn.boost = false; }); });
+  var drag = null;
+  cv.addEventListener('pointerdown', function (e) { if (mode === 'surface') { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); } });
+  cv.addEventListener('pointermove', function (e) {
+    if (drag && e.pointerId === drag.id) { camYaw -= (e.clientX - drag.x) * .006; camPitch = clamp(camPitch + (e.clientY - drag.y) * .005, -.25, 1.25); drag.x = e.clientX; drag.y = e.clientY; }
+  });
+  ['pointerup', 'pointercancel'].forEach(function (n) { cv.addEventListener(n, function () { drag = null; }); });
+
+  var camNames = ['Chase cam', 'Cockpit cam', 'Far cam'];
+  function cycleCam() {
+    if (mode === 'space') { camMode = (camMode + 1) % 3; $('camName').textContent = camNames[camMode]; }
+    else if (mode === 'surface') { fpv = !fpv; P.char.group.visible = !fpv; }
+  }
+
+  function nearTarget() { return mode === 'space' && MARR.p.distanceTo(ship.group.position) - MARR.r < 150; }
+  function doAction() {
+    if (mode === 'space' && nearTarget()) landOnMarrikh();
+    else if (mode === 'surface' && P.pos.distanceTo(surf.ship.position) < 10) takeOff();
+  }
+  function transition(fn) {
+    if (mode === 'transition') return;
+    prevMode = mode; mode = 'transition'; $('fade').classList.add('on'); setPrompt(null);
+    setTimeout(function () { fn(); setTimeout(function () { $('fade').classList.remove('on'); }, 150); }, 700);
+  }
+  function landOnMarrikh() {
+    beep(220, .5, 'sawtooth', .05); beep(330, .5, 'sine', .05, .15);
+    transition(function () {
+      activeScene = surfScene; mode = 'surface'; M.landed = true; M.reach = true; renderMission();
+      P.pos.set(3, 0, 18.5); P.face = Math.PI; camYaw = 0; camPitch = .35; fpv = false; P.char.group.visible = true;
+      $('hudSpace').hidden = true; hideLabels(spaceLabels); camera.fov = 65; camera.updateProjectionMatrix();
+      toast(M.delivered ? 'Back on Marrikh' : 'Landed on Marrikh. Find the blue crystals');
+    });
+  }
+  function takeOff() {
+    beep(180, .8, 'sawtooth', .05); beep(360, .6, 'sine', .05, .3);
+    transition(function () {
+      activeScene = spaceScene; mode = 'space'; $('hudSpace').hidden = false; hideLabels(surfLabels); $('dialog').hidden = true;
+      var out = new V3(-.4, .3, .9).normalize();
+      ship.group.position.copy(MARR.p).addScaledVector(out, MARR.r + 130);
+      var m = new T.Matrix4().lookAt(new V3(), out, new V3(0, 1, 0)); ship.group.quaternion.setFromRotationMatrix(m);
+      S.speed = 0; S.thr = .35; snapCam = true; toast('Back in orbit. Fly anywhere');
+    });
+  }
+
+  /* ---------- per-frame updates ---------- */
+  var snapCam = true, introA = 0, clock = new T.Clock(), tick = 0;
+  var camOff = [new V3(0, 3.2, 13), new V3(0, .9, -.8), new V3(0, 12, 42)];
+
+  function updateSpace(dt) {
+    var yIn = (down('KeyD') || down('ArrowRight') ? 1 : 0) - (down('KeyA') || down('ArrowLeft') ? 1 : 0) + joy.x;
+    var pIn = (down('ArrowUp') ? 1 : 0) - (down('ArrowDown') ? 1 : 0) + joy.y;
+    yIn = clamp(yIn, -1, 1); pIn = clamp(pIn, -1, 1);
+    var k = Math.min(1, dt * 5); S.yaw += (yIn - S.yaw) * k; S.pitch += (pIn - S.pitch) * k;
+    var G = ship.group; G.rotateY(-S.yaw * dt); G.rotateX(S.pitch * .8 * dt);
+    var boost = down('ShiftLeft') || down('ShiftRight') || btn.boost;
+    var near = false, i;
+    for (i = 0; i < planets.length; i++) if (planets[i].p.distanceTo(G.position) - planets[i].r < 220) near = true;
+    var tgt = down('KeyW') ? 1 : down('KeyS') ? 0 : .35;
+    S.thr += (tgt - S.thr) * Math.min(1, dt * 2);
+    var maxV = near ? 55 : 110 * (boost ? 2.8 : 1);
+    S.speed += (Math.min(S.thr * 110 * (boost ? 2.8 : 1), maxV) - S.speed) * Math.min(1, dt * (boost ? 1.6 : 1.2));
+    fwd.set(0, 0, -1).applyQuaternion(G.quaternion); G.position.addScaledVector(fwd, S.speed * dt);
+    for (i = 0; i < planets.length; i++) {
+      var pl = planets[i], dv = tmp.copy(G.position).sub(pl.p), dd = dv.length(), lim = pl.r + 8;
+      if (dd < lim) {
+        G.position.copy(pl.p).addScaledVector(dv.normalize(), lim); S.speed *= .3;
+        if (performance.now() - lastCollide > 2500) { lastCollide = performance.now(); toast(pl.target ? 'Too low. Slow down and press ' + actName + ' to land' : 'Too close to ' + pl.name + '. Pull up'); }
+      }
+    }
+    ship.model.rotation.z += (-S.yaw * .7 - ship.model.rotation.z) * Math.min(1, dt * 6);
+    var fs = .35 + S.thr * 1 + (boost ? .9 : 0), fl = Math.random() * .15;
+    ship.flames.forEach(function (f) { f.scale.set(1 + fl, fs, 1 + fl); });
+    ship.glows.forEach(function (gl) { var s = 1.4 + fs * 1.3 + fl * 2; gl.scale.set(s, s, 1); });
+    for (i = 0; i < planets.length; i++) { planets[i].mesh.rotation.y += dt * .01; if (planets[i].clouds) planets[i].clouds.rotation.y += dt * .014; }
+
+    /* camera */
+    var off = tmp.copy(camOff[camMode]).applyQuaternion(G.quaternion).add(G.position), kk = snapCam ? 1 : 1 - Math.exp(-dt * (camMode === 1 ? 40 : 5.5));
+    camera.position.lerp(off, kk);
+    up.set(0, 1, 0).applyQuaternion(G.quaternion); camera.up.lerp(up, kk).normalize();
+    var look = camMode === 1 ? new V3().copy(G.position).addScaledVector(fwd, 60) : new V3().copy(G.position).addScaledVector(fwd, 24);
+    camera.lookAt(look); snapCam = false;
+    camera.fov += (62 + (S.speed / 110) * 9 + (boost ? 6 : 0) - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix();
+    starsSpace.position.copy(camera.position);
+    spaceDust.update(G.position, 0, 0, 0);
+
+    /* hud, labels, mission */
+    $('spd').textContent = Math.round(S.speed); $('thr').style.width = Math.round(S.thr * 100) + '%';
+    camera.updateMatrixWorld();
+    for (i = 0; i < planets.length; i++) {
+      var p = planets[i], d = p.p.distanceTo(G.position) - p.r;
+      tmp.copy(p.p); tmp.y += p.r * 1.25;
+      placeLabel(p.label, tmp, p.name + (p.target ? ' (mission)' : ''), Math.max(0, Math.round(d)) + ' m');
+    }
+    var dm = MARR.p.distanceTo(G.position) - MARR.r, txt = Math.round(dm) + ' m';
+    if (!M.reach) {
+      if (dm < 260) { M.reach = true; M.distTxt = ''; renderMission(); toast('Marrikh in range. Slow down and press ' + actName + ' to land'); beep(660, .15, 'sine', .06); beep(880, .25, 'sine', .06, .15); }
+      else if (txt !== M.distTxt) { M.distTxt = txt; renderMission(); }
+    }
+    setPrompt(nearTarget() ? 'Press ' + actName + ' to land on Marrikh' : null);
+  }
+
+  function wrapAng(a) { while (a > Math.PI) a -= 6.2832; while (a < -Math.PI) a += 6.2832; return a; }
+  function pushOut(cx, cz, r) {
+    var dx = P.pos.x - cx, dz = P.pos.z - cz, d = Math.hypot(dx, dz);
+    if (d < r && d > 0.001) { P.pos.x = cx + dx / d * r; P.pos.z = cz + dz / d * r; }
+  }
+  function animChar(c, phase, amt) {
+    c.legL.rotation.x = Math.sin(phase) * .8 * amt; c.legR.rotation.x = -Math.sin(phase) * .8 * amt;
+    c.armL.rotation.x = -Math.sin(phase) * .7 * amt; c.armR.rotation.x = Math.sin(phase) * .7 * amt;
+  }
+
+  function updateSurface(dt, time) {
+    var ix = (down('KeyD') ? 1 : 0) - (down('KeyA') ? 1 : 0) + joy.x, iy = (down('KeyW') ? 1 : 0) - (down('KeyS') ? 1 : 0) + joy.y, len = Math.hypot(ix, iy);
+    if (len > 1) { ix /= len; iy /= len; len = 1; }
+    camYaw += ((down('ArrowLeft') ? 1 : 0) - (down('ArrowRight') ? 1 : 0)) * 1.8 * dt;
+    camPitch = clamp(camPitch + ((down('ArrowDown') ? 1 : 0) - (down('ArrowUp') ? 1 : 0)) * 1.1 * dt, -.25, 1.25);
+    var run = down('ShiftLeft') || down('ShiftRight') || btn.boost, sp = run ? 10 : 5.5;
+    var fx = -Math.sin(camYaw), fz = -Math.cos(camYaw), rx = Math.cos(camYaw), rz = -Math.sin(camYaw);
+    var mx = fx * iy + rx * ix, mz = fz * iy + rz * ix;
+    P.pos.x += mx * sp * dt; P.pos.z += mz * sp * dt;
+    pushOut(0, -30, 8.6); pushOut(0, 24, 4); pushOut(5, -14, 1);
+    var rr = Math.hypot(P.pos.x, P.pos.z); if (rr > 250) { P.pos.x *= 250 / rr; P.pos.z *= 250 / rr; }
+    P.pos.y = surf.h(P.pos.x, P.pos.z);
+    if (len > .05) P.face += wrapAng(Math.atan2(mx, mz) - P.face) * Math.min(1, dt * 10);
+    P.amt += (len * (run ? 1.25 : 1) - P.amt) * Math.min(1, dt * 10); P.phase += dt * (run ? 12 : 8) * Math.max(.2, len);
+    var g = P.char.group; g.position.copy(P.pos); g.rotation.y = P.face; animChar(P.char, P.phase, P.amt);
+    g.children[0].position.y = Math.abs(Math.sin(P.phase)) * .06 * P.amt;
+
+    /* npc, crystals, ring */
+    var n = surf.npc; n.group.rotation.y += wrapAng(Math.atan2(P.pos.x - 5, P.pos.z + 14) - n.group.rotation.y) * Math.min(1, dt * 4);
+    n.armR.rotation.x = Math.sin(time * 1.6) * .12 - .1; n.armL.rotation.x = -Math.sin(time * 1.6) * .08;
+    surf.mark.visible = !M.delivered; surf.mark.position.y = 3.5 + Math.sin(time * 3) * .15;
+    surf.crystals.forEach(function (c) {
+      if (c.got) return;
+      c.main.rotation.y += dt * 1.2; c.main.position.y = 1.5 + Math.sin(time * 2 + c.x) * .18;
+      if (Math.hypot(P.pos.x - c.x, P.pos.z - c.z) < 2.3) {
+        c.got = true; c.g.visible = false; c.label.style.display = 'none'; M.crystals++; renderMission();
+        beep(740, .12, 'sine', .07); beep(990, .22, 'sine', .07, .1);
+        toast(M.crystals < 3 ? 'Crystal collected ' + M.crystals + '/3' : 'All 3 crystals collected. Go to the glowing ring');
+      }
+    });
+    surf.ringG.scale.setScalar(1 + Math.sin(time * 3) * .03);
+    if (M.crystals >= 3 && !M.delivered && Math.hypot(P.pos.x, P.pos.z + 12) < 3.4) deliver();
+    surf.beacon.visible = M.delivered ? true : Math.floor(time * 1.5) % 2 === 0;
+
+    /* prompt + dialog */
+    var dn = Math.hypot(P.pos.x - 5, P.pos.z + 14), shipD = P.pos.distanceTo(surf.ship.position);
+    setPrompt(shipD < 10 ? 'Press ' + actName + ' to take off' : null);
+    var dl = $('dialog');
+    if (dn < 9) {
+      var line = M.delivered ? 'Base power restored. Thank you, Commander. Safe travels.'
+        : M.crystals >= 3 ? 'That is all three! Step into the glowing ring to power the base.'
+        : M.crystals > 0 ? 'Good work. ' + M.crystals + ' of 3 crystals so far. Look for the blue light beams.'
+        : 'Commander! The base lost power. Find 3 blue power crystals around here and bring them to the glowing ring.';
+      if ($('dtext').textContent !== line) $('dtext').textContent = line; dl.hidden = false;
+    } else dl.hidden = true;
+
+    /* light + dust + camera */
+    surf.sun.position.copy(P.pos).addScaledVector(surf.sunDir, 120); surf.sun.target.position.copy(P.pos);
+    surfDust.update(P.pos, dt * 4, dt * .3, dt * 1.5);
+    var head = tmp.set(P.pos.x, P.pos.y + 1.7, P.pos.z);
+    if (fpv) {
+      camera.position.copy(head); camera.rotation.order = 'YXZ'; camera.rotation.set(-(camPitch - .3), camYaw, 0);
+    } else {
+      var cp = Math.cos(camPitch), d = 7.5, cx = head.x + Math.sin(camYaw) * cp * d, cz = head.z + Math.cos(camYaw) * cp * d, cy = head.y + .4 + Math.sin(camPitch) * d;
+      cy = Math.max(cy, surf.h(cx, cz) + .8);
+      camera.position.set(cx, cy, cz); camera.up.set(0, 1, 0); camera.lookAt(head.x, head.y - .1, head.z);
+    }
+    skyGroup.position.copy(camera.position);
+    camera.updateMatrixWorld();
+    surf.crystals.forEach(function (c) { if (!c.got) placeLabel(c.label, tmp.set(c.x, c.g.position.y + 4, c.z), 'Crystal', Math.round(Math.hypot(P.pos.x - c.x, P.pos.z - c.z)) + ' m'); });
+    if (M.crystals >= 3 && !M.delivered) placeLabel(surf.ringLabel, tmp.set(0, 3.2, -12), 'Power ring', Math.round(Math.hypot(P.pos.x, P.pos.z + 12)) + ' m'); else surf.ringLabel.style.display = 'none';
+    placeLabel(surf.shipLabel, tmp.set(0, 6, 24), 'Your ship', Math.round(shipD) + ' m');
+  }
+
+  function deliver() {
+    M.delivered = true; renderMission(); surf.ringM.color.set(0x6ee7a8);
+    surf.win.emissive.set(0x7fd6ff); surf.win.emissiveIntensity = .9; surf.baseLight.intensity = 2.6; surf.dome.material.emissive = new T.Color(0x1d3a52);
+    [523, 659, 784, 1046].forEach(function (f, i) { beep(f, .3, 'sine', .07, i * .14); });
+    toast('Base power restored');
+    setTimeout(function () { if (mode === 'surface') $('win').hidden = false; }, 1600);
+  }
+  $('winBtn').addEventListener('click', function () { $('win').hidden = true; });
+
+  function updateIntro(dt) {
+    introA += dt * .18; var G = ship.group.position;
+    camera.position.set(G.x + Math.cos(introA) * 15, G.y + 4, G.z + Math.sin(introA) * 15 - 2); camera.up.set(0, 1, 0); camera.lookAt(G.x, G.y, G.z);
+    ship.flames.forEach(function (f) { f.scale.set(1, .5 + Math.random() * .1, 1); });
+    starsSpace.position.copy(camera.position); spaceDust.update(G, 0, 0, 0);
+    for (var i = 0; i < planets.length; i++) planets[i].mesh.rotation.y += dt * .01;
+  }
+
+  function frame() {
+    requestAnimationFrame(frame);
+    var dt = Math.min(.05, clock.getDelta()); tick += dt;
+    if (built) {
+      if (mode === 'intro') updateIntro(dt);
+      else if (mode === 'space') updateSpace(dt);
+      else if (mode === 'surface') updateSurface(dt, tick);
+      renderer.render(activeScene, camera);
+    }
+  }
+
+  startBtn.addEventListener('click', function () {
+    beep(440, .08, 'sine', .03);
+    $('intro').hidden = true; mode = 'space'; snapCam = true; renderMission();
+  });
+  $('hudSpace').hidden = false;
+  setTimeout(function () { build(); }, 40);
+  frame();
+})();
+</script>
+
+</body></html>
